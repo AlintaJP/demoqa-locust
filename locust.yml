@@ -1,0 +1,9 @@
+[locust run]
+host: https://demoqa.com/
+locustfile: /mnt/locust/BookStore_Locust/loadTest.py
+
+[headless mode]
+headless: true
+users:5
+hatch-rate: 1
+run-time: 30m
