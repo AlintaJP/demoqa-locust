@@ -1,3 +1,5 @@
+import logging
+
 from locust import HttpUser, SequentialTaskSet, task, between
 import json
 import random
@@ -12,6 +14,8 @@ from utilities.csvreader import CSVReader
 data_folder = os.path.join(root_dir, "data")
 json_file_path = os.path.join(data_folder, "books.json")
 file_path = os.path.join(data_folder, "bookStoreCredentials.csv")
+
+logger = logging.getLogger(__name__)
 
 
 class UserBehaviour(SequentialTaskSet):
@@ -44,36 +48,69 @@ class UserBehaviour(SequentialTaskSet):
             "password": f"{self.password}"
         }
 
-        respCreateUser = self.client.post("Account/v1/User",
-                                          json=creds,
-                                          name="Create User")
+        with self.client.post("Account/v1/User",
+                              json=creds,
+                              catch_response=True,
+                              name="Create User") as respCreateUser:
 
-        jsonRespCreateUser = json.loads(respCreateUser.text)
-        self.user_id = jsonRespCreateUser["userID"]
+            if "userID" not in respCreateUser.text:
+                respCreateUser.failure("Failed to create User")
+                logger.critical("Failed to create User \t" + self.user_name)
+            else:
+                jsonRespCreateUser = json.loads(respCreateUser.text)
+                self.user_id = jsonRespCreateUser["userID"]
+                respCreateUser.success()
 
-        respAuth = self.client.post("Account/v1/GenerateToken",
-                                    json=creds,
-                                    name="Authorization")
+        with self.client.post("Account/v1/GenerateToken",
+                              json=creds,
+                              catch_response=True,
+                              name="Authorization") as respAuth:
 
-        jsonRespAuth = json.loads(respAuth.text)
-        self.token = jsonRespAuth["token"]
+            if "token" not in respAuth.text:
+                respAuth.failure("Failed to authorize")
+                logger.critical("Failed to authorize \t" + self.user_name)
+            else:
+                jsonRespAuth = json.loads(respAuth.text)
+                self.token = jsonRespAuth["token"]
+                respCreateUser.success()
 
     @task()
     def getUserInfo(self):
-        self.client.get(f"Account/v1/User/{self.user_id}",
-                        headers={
-                            "Authorization": "Bearer %s" % self.token},
-                        name="Get User info")
+        with self.client.get(f"Account/v1/User/{self.user_id}",
+                             headers={
+                                 "Authorization": "Bearer %s" % self.token},
+                             catch_response=True,
+                             name="Get User info") as resp:
+
+            if 'userId' not in resp.text:
+                resp.failure("Failed to get User info")
+                logger.error("Failed to get User info \t" + self.user_name)
+            else:
+                resp.success()
 
     @task()
     def getListOfBook(self):
-        self.client.get("BookStore/v1/Books",
-                        name="Get the list of books")
+        with self.client.get("BookStore/v1/Books",
+                             catch_response=True,
+                             name="Get the list of books") as resp:
+
+            if "books" not in resp.text:
+                resp.failure("Failed to get the list of books")
+                logger.error("Failed to get the list of books \t" + self.user_name)
+            else:
+                resp.success()
 
     @task()
     def getBookInfo(self):
-        self.client.get('BookStore/v1/Book?ISBN='+self.chooseRandomIsbn(),
-                        name="Get a book info")
+        with self.client.get('BookStore/v1/Book?ISBN=' + self.chooseRandomIsbn(),
+                             catch_response=True,
+                             name="Get a book info") as resp:
+
+            if "isbn" not in resp.text:
+                resp.failure("Failed to get book info")
+                logger.error("Failed to get book info \t" + self.user_name)
+            else:
+                resp.success()
 
     @task()
     def addBookToCart(self):
@@ -88,12 +125,19 @@ class UserBehaviour(SequentialTaskSet):
             ]
         }
 
-        self.client.post("BookStore/v1/Books",
-                         headers={
-                             "Authorization": "Bearer %s" % self.token
-                         },
-                         json=payload,
-                         name="Add a book to cart")
+        with self.client.post("BookStore/v1/Books",
+                              headers={
+                                  "Authorization": "Bearer %s" % self.token
+                              },
+                              json=payload,
+                              catch_response=True,
+                              name="Add a book to cart") as resp:
+
+            if "isbn" not in resp.text:
+                resp.failure("Failed to add a book to the cart")
+                logger.error("Failed to add a book to the cart \t" + self.user_name)
+            else:
+                resp.success()
 
     @task()
     def replaceBook(self):
@@ -106,12 +150,19 @@ class UserBehaviour(SequentialTaskSet):
             "isbn": f"{self.book_isbn_two}"
         }
 
-        self.client.put("BookStore/v1/Books/" + self.book_isbn_one,
-                        headers={
-                            "Authorization": "Bearer %s" % self.token
-                        },
-                        data=payload,
-                        name="Replace the book in cart")
+        with self.client.put("BookStore/v1/Books/" + self.book_isbn_one,
+                             headers={
+                                 "Authorization": "Bearer %s" % self.token
+                             },
+                             data=payload,
+                             catch_response=True,
+                             name="Replace the book in cart") as resp:
+
+            if 'userId' not in resp.text:
+                resp.failure("Failed to update the book")
+                logger.error("Failed to update the book \t" + self.user_name)
+            else:
+                resp.success()
 
     @task()
     def deleteBook(self):
@@ -120,27 +171,48 @@ class UserBehaviour(SequentialTaskSet):
             "userId": f"{self.user_id}"
         }
 
-        self.client.delete("BookStore/v1/Book",
-                           headers={
-                               "Authorization": "Bearer %s" % self.token
-                           },
-                           json=payload,
-                           name="Delete a book from the cart")
+        with self.client.delete("BookStore/v1/Book",
+                                headers={
+                                    "Authorization": "Bearer %s" % self.token
+                                },
+                                json=payload,
+                                catch_response=True,
+                                name="Delete a book from the cart") as resp:
+
+            if resp.status_code != 204:
+                resp.failure("Failed to delete the book")
+                logger.error("Failed to delete the book \t" + self.user_name)
+            else:
+                resp.success()
 
     @task()
     def deleteBooks(self):
-        self.client.delete('BookStore/v1/Books?UserId=' + self.user_id,
-                           headers={
-                               "Authorization": "Bearer %s" % self.token
-                           },
-                           name="Delete all books from the cart")
+        with self.client.delete('BookStore/v1/Books?UserId=' + self.user_id,
+                                headers={
+                                    "Authorization": "Bearer %s" % self.token
+                                },
+                                catch_response=True,
+                                name="Delete all books from the cart") as resp:
+
+            if resp.status_code != 204:
+                resp.failure("Failed to delete the books")
+                logger.error("Failed to delete the books \t" + self.user_name)
+            else:
+                resp.success()
 
     def on_stop(self):
-        self.client.delete(f"Account/v1/User/{self.user_id}",
-                           headers={
-                               "Authorization": "Bearer %s" % self.token
-                           },
-                           name="Delete User")
+        with self.client.delete(f"Account/v1/User/{self.user_id}",
+                                headers={
+                                    "Authorization": "Bearer %s" % self.token
+                                },
+                                catch_response=True,
+                                name="Delete User") as resp:
+
+            if resp.status_code != 204:
+                resp.failure("Failed to delete User")
+                logger.error("Failed to delete User \t" + self.user_name)
+            else:
+                resp.success()
 
 
 class WebsiteUser(HttpUser):
