@@ -104,7 +104,7 @@ class UserBehaviour(SequentialTaskSet):
     def getBookInfo(self):
         with self.client.get('BookStore/v1/Book?ISBN=' + self.chooseRandomIsbn(),
                              catch_response=True,
-                             name="Get a book info") as resp:
+                             name="Get book info") as resp:
 
             if "isbn" not in resp.text:
                 resp.failure("Failed to get book info")
@@ -134,8 +134,8 @@ class UserBehaviour(SequentialTaskSet):
                               name="Add a book to cart") as resp:
 
             if "isbn" not in resp.text:
-                resp.failure("Failed to add a book to the cart")
-                logger.error("Failed to add a book to the cart \t" + self.user_name)
+                resp.failure("Failed to add the book to the cart")
+                logger.error("Failed to add the book to the cart \t" + self.user_name)
             else:
                 resp.success()
 
