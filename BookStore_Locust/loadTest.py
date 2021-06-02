@@ -17,6 +17,8 @@ file_path = os.path.join(data_folder, "bookStoreCredentials.csv")
 
 logger = logging.getLogger(__name__)
 
+counter = 0
+
 
 class UserBehaviour(SequentialTaskSet):
 
@@ -37,9 +39,17 @@ class UserBehaviour(SequentialTaskSet):
         random_index = random.choice(range(0, len(list(self.data['books']))))
         return str(self.data['books'][random_index]['isbn'])
 
-    def on_start(self):
+    @task()
+    def createUser(self):
+        global counter
         my_user = self.parent.my_user_data.pop()
         self.user_name = my_user["UserName"]
+        if "100" in self.user_name:
+            self.user_name = self.user_name.replace("100", "0")
+            counter = 0
+        else:
+            self.user_name = self.user_name.replace(str(counter), str(counter+1))
+            counter += 1
         self.password = my_user["Password"]
         self.parent.my_user_data.insert(0, {'UserName': self.user_name, 'Password': self.password})
 
@@ -200,7 +210,8 @@ class UserBehaviour(SequentialTaskSet):
             else:
                 resp.success()
 
-    def on_stop(self):
+    @task()
+    def deleteUser(self):
         with self.client.delete(f"Account/v1/User/{self.user_id}",
                                 headers={
                                     "Authorization": "Bearer %s" % self.token
